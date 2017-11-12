@@ -43,6 +43,8 @@ import org.apache.curator.framework.recipes.cache.PathChildrenCache;
 import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
 import org.apache.curator.framework.recipes.cache.PathChildrenCacheListener;
 import org.apache.curator.framework.recipes.locks.InterProcessSemaphoreMutex;
+import org.apache.curator.framework.recipes.nodes.PersistentEphemeralNode;
+import org.apache.curator.framework.recipes.nodes.PersistentNode;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.zookeeper.CreateMode;
 
@@ -86,6 +88,7 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
   private static final String ZK_PATH_COUNTERS = "/counters/";
   private static final String ZK_PATH_CLUSTER_NODE = "/cluster/nodes/";
   private static final String ZK_PATH_CLUSTER_NODE_WITHOUT_SLASH = "/cluster/nodes";
+  private PersistentNode persistentNode;
 
   public ZookeeperClusterManager() {
     String resourceLocation = System.getProperty(ZK_SYS_CONFIG_KEY, CONFIG_FILE);
@@ -260,8 +263,10 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
     clusterNodes.getListenable().addListener(this);
     try {
       clusterNodes.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
+      persistentNode=new PersistentNode(curator,CreateMode.EPHEMERAL,false,ZK_PATH_CLUSTER_NODE + nodeID,nodeID.getBytes());
       //Join to the cluster
-      curator.create().withMode(CreateMode.EPHEMERAL).forPath(ZK_PATH_CLUSTER_NODE + nodeID, nodeID.getBytes());
+     persistentNode.start();
+     persistentNode.waitForInitialCreate(3,TimeUnit.SECONDS);
     } catch (Exception e) {
       throw new VertxException(e);
     }
@@ -333,6 +338,7 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
         if (active) {
           active = false;
           try {
+            persistentNode.close();
             curator.delete().deletingChildrenIfNeeded().inBackground((client, event) -> {
               if (event.getType() == CuratorEventType.DELETE) {
                 if (customCuratorCluster) {
