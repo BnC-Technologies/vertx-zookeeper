@@ -36,14 +36,12 @@ import io.vertx.spi.cluster.zookeeper.impl.ZKSyncMap;
 import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.framework.api.CuratorEventType;
 import org.apache.curator.framework.imps.CuratorFrameworkState;
 import org.apache.curator.framework.recipes.atomic.DistributedAtomicLong;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
 import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
 import org.apache.curator.framework.recipes.cache.PathChildrenCacheListener;
 import org.apache.curator.framework.recipes.locks.InterProcessSemaphoreMutex;
-import org.apache.curator.framework.recipes.nodes.PersistentEphemeralNode;
 import org.apache.curator.framework.recipes.nodes.PersistentNode;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.zookeeper.CreateMode;
@@ -189,7 +187,13 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
   @Override
   public <K, V> void getAsyncMultiMap(String name, Handler<AsyncResult<AsyncMultiMap<K, V>>> handler) {
     vertx.executeBlocking(event -> {
-      AsyncMultiMap asyncMultiMap = asyncMultiMapCache.computeIfAbsent(name, key -> new ZKAsyncMultiMap<>(vertx, curator, name));
+      AsyncMultiMap asyncMultiMap = asyncMultiMapCache.computeIfAbsent(name, key -> {
+        try {
+          return new ZKAsyncMultiMap<>(vertx, curator, name);
+        } catch (Exception e) {
+          return null;
+        }
+      });
       event.complete(asyncMultiMap);
     }, handler);
   }
@@ -198,14 +202,24 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
   public <K, V> void getAsyncMap(String name, Handler<AsyncResult<AsyncMap<K, V>>> handler) {
     AsyncMapTTLMonitor<K, V> asyncMapTTLMonitor = AsyncMapTTLMonitor.getInstance(vertx, this);
     vertx.executeBlocking(event -> {
-      AsyncMap zkAsyncMap = asyncMapCache.computeIfAbsent(name, key -> new ZKAsyncMap<>(vertx, curator, asyncMapTTLMonitor, name));
+      AsyncMap zkAsyncMap = asyncMapCache.computeIfAbsent(name, key -> {
+        try {
+          return new ZKAsyncMap<>(vertx, curator, asyncMapTTLMonitor, name);
+        } catch (Exception e) {
+          return null;
+        }
+      });
       event.complete(zkAsyncMap);
     }, handler);
   }
 
   @Override
   public <K, V> Map<K, V> getSyncMap(String name) {
-    return new ZKSyncMap<>(curator, name);
+    try {
+      return new ZKSyncMap<>(curator, name);
+    } catch (Exception e) {
+      return null;
+    }
   }
 
   @Override
@@ -263,10 +277,10 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
     clusterNodes.getListenable().addListener(this);
     try {
       clusterNodes.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
-      persistentNode=new PersistentNode(curator,CreateMode.EPHEMERAL,false,ZK_PATH_CLUSTER_NODE + nodeID,nodeID.getBytes());
       //Join to the cluster
-     persistentNode.start();
-     persistentNode.waitForInitialCreate(3,TimeUnit.SECONDS);
+      persistentNode = new PersistentNode(curator, CreateMode.EPHEMERAL, false, ZK_PATH_CLUSTER_NODE + nodeID, nodeID.getBytes());
+      persistentNode.start();
+      persistentNode.waitForInitialCreate(10, TimeUnit.SECONDS);
     } catch (Exception e) {
       throw new VertxException(e);
     }
@@ -339,18 +353,14 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
           active = false;
           try {
             persistentNode.close();
-            curator.delete().deletingChildrenIfNeeded().inBackground((client, event) -> {
-              if (event.getType() == CuratorEventType.DELETE) {
-                if (customCuratorCluster) {
-                  future.complete();
-                } else {
-                  if (curator.getState() == CuratorFrameworkState.STARTED) {
-                    curator.close();
-                    future.complete();
-                  }
-                }
+            if (customCuratorCluster) {
+              future.complete();
+            } else {
+              if (curator.getState() == CuratorFrameworkState.STARTED) {
+                curator.close();
+                future.complete();
               }
-            }).forPath(ZK_PATH_CLUSTER_NODE + nodeID);
+            }
             AsyncMapTTLMonitor.getInstance(vertx, this).stop();
           } catch (Exception e) {
             log.error(e);

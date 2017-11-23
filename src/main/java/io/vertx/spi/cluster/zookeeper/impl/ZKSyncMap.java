@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
  */
 public class ZKSyncMap<K, V> extends ZKMap<K, V> implements Map<K, V> {
 
-  public ZKSyncMap(CuratorFramework curator, String mapName) {
+  public ZKSyncMap(CuratorFramework curator, String mapName) throws Exception {
     super(curator, null, ZK_PATH_SYNC_MAP, mapName);
   }
 
@@ -108,7 +108,9 @@ public class ZKSyncMap<K, V> extends ZKMap<K, V> implements Map<K, V> {
         curator.setData().forPath(keyPath, valueBytes);
       } else {
         //sync map's node mode should be EPHEMERAL, as lifecycle of this path as long as verticle's.
+        zkEphemeralNodeCache.add(keyPath);
         curator.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).forPath(keyPath, valueBytes);
+
       }
       return value;
     } catch (Exception e) {

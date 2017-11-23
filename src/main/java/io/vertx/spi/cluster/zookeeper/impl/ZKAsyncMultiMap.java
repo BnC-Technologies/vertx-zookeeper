@@ -54,7 +54,7 @@ public class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<
 
   private static final Logger logger = LoggerFactory.getLogger(ZKAsyncMultiMap.class);
 
-  public ZKAsyncMultiMap(Vertx vertx, CuratorFramework curator, String mapName) {
+  public ZKAsyncMultiMap(Vertx vertx, CuratorFramework curator, String mapName) throws Exception {
     super(curator, vertx, ZK_PATH_ASYNC_MULTI_MAP, mapName);
     treeCache = new TreeCache(curator, mapPath);
     treeCache.getListenable().addListener(new Listener());
