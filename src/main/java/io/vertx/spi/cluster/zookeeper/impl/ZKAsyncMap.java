@@ -50,7 +50,7 @@ public class ZKAsyncMap<K, V> extends ZKMap<K, V> implements AsyncMap<K, V> {
   private final PathChildrenCache curatorCache;
   private AsyncMapTTLMonitor<K, V> asyncMapTTLMonitor;
 
-  public ZKAsyncMap(Vertx vertx, CuratorFramework curator, AsyncMapTTLMonitor<K,V> asyncMapTTLMonitor, String mapName) {
+  public ZKAsyncMap(Vertx vertx, CuratorFramework curator, AsyncMapTTLMonitor<K,V> asyncMapTTLMonitor, String mapName) throws Exception {
     super(curator, vertx, ZK_PATH_ASYNC_MAP, mapName);
     this.curatorCache = new PathChildrenCache(curator, mapPath, true);
     try {
